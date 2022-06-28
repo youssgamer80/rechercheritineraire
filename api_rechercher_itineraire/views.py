@@ -40,7 +40,18 @@ def depthFirst(graph, currentVertex, visited, visitedList):
         visitedList.append(visited)
         return visitedList
 
+def getAllPointArret():
+    points = PointArret.objects.all()
 
+    serializer = PointArretSerializer(points, many=True)
+    data = serializer.data
+    return data
+
+
+def isListEmpty(inList):
+    if isinstance(inList, list): # Is a list
+        return all( map(isListEmpty, inList) )
+    return False # Not a list
 
 def genererChemins(zone, lonA, latA):
     finish = True
@@ -106,7 +117,7 @@ async def write_data(zoneA, lonA, latA):
                     coords = []
                     for coord in pA:
                         coords.append([coord[1],coord[2]])
-                    print(coords)
+
                     async with httpx.AsyncClient() as client:
                         await asyncio.sleep(1)
                         matrix = osr_URL_BASE + '/matrix/%s'%(profile)
@@ -122,6 +133,9 @@ async def write_data(zoneA, lonA, latA):
                         )
                         if r.status_code == 200:
                             trafficduration = osr_matrix_duration_from_dict(r.json()).distances[0]
+                            """
+                            Sauvegarder les itineraires pratiquables en réalité
+                            """
                             if(all(x <= y for x,y in zip(trafficduration, trafficduration[1:]))):
                                 pointArret.append(pA)
                                 matrixList.append(r.json())
@@ -229,7 +243,14 @@ def check_list(lst):
             else:
                 print("Equal")
 
-
+async def generateAllPointIntineraire(request):
+    data = getAllPointArret()
+    for d in data:
+        print(d)
+        await write_data(d["nom"], d["longitude"], d["latitude"])
+    response = {"message":"Succès de génération" }
+    # return HttpResponse(tasks)
+    return HttpResponse(json.dumps(response), content_type="application/json")
 
 async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
     pointarretsR = []
@@ -252,9 +273,11 @@ async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
         if not os.path.exists(
                 '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(
                         zoneA)):
+            #Ecriture des donnees pour un point donne
             await write_data(zoneA, lonA, latA)
 
         else:
+            #Recuperation des donnes stockees
             response = read_data(zoneA, lonA, latA)
             #print(response)
             pointarret = response[profile]["points-arrets"]
@@ -288,17 +311,52 @@ async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
                     infos.append((getInfTroncon(resultat[i][1],resultat[i][2],resultat[i+1][1],resultat[i+1][2])))
             infosToncon.append(infos)
             #casser les itineraires avec un troncons comportant plusieurs type de transport
-            for infos in infosToncon:
-                combinaisonInfos.append(list(itertools.product(*infos)))
-                combinaisonPoints.append(pointarretsR[infosToncon.index(infos)])
-                combinaisonMatrix.append(matrixR[infosToncon.index(infos)])
-                combinaisonItineraire.append(itinerairesR[infosToncon.index(infos)])
+            """
+            Pour un itineraire donnée, un tronçon pour avoir plusieurs type transport
+            Ce qui donne naissance à des nouvelles combinaisons pour le meme itineraire: 
+            Exemple : 
+            Un itineraire de trois 3 tronçons
+            itineraire = [
+            [
+            {"type_transport": "Warren"},
+            {"type_transport": "Gbaka"}
+            ],
+            [{"type_transport": "Gbaka"}]
+            [{"type_transport": "Gbaka"},{"type_transport": "Warren"}]
+            ]
+            qui donne 4 nouveaux itineraire:
+            [{'type_transport': 'Warren'}, {'type_transport': 'Gbaka'}, {'type_transport': 'Gbaka'}]
+            [{'type_transport': 'Warren'}, {'type_transport': 'Gbaka'}, {'type_transport': 'Warren'}]
+            [{'type_transport': 'Gbaka'}, {'type_transport': 'Gbaka'}, {'type_transport': 'Gbaka'}]
+            [{'type_transport': 'Gbaka'}, {'type_transport': 'Gbaka'}, {'type_transport': 'Warren'}]
+            
+            """
+        for i in range(len(infosToncon)):
+                infosList = infosToncon[i]
+                for j in range(len(infosToncon[i])):
+                    if infosToncon[i][j] == []:
+                        infosList[j]=[{"type_transport": "pied"}]
+
+                combinaisonInfos.append(list(itertools.product(*infosList)))
+                index.append([i]*len(list(itertools.product(*infosList))))
+
+
+        infosToncon = []
+        for combinaisons in combinaisonInfos:
+            for combinaison in combinaisons:
+                  infosToncon.append(combinaison)
+        for ind in index:
+                for i in ind:
+                    combinaisonPoints.append(pointarretsR[i])
+                    combinaisonMatrix.append(matrixR[i])
+                    combinaisonItineraire.append(itinerairesR[i])
+
         #print(infosToncon)
 
 
         #print(check_list(infosToncon))
         pointarretsR = combinaisonPoints
-        infosToncon = combinaisonInfos
+
         itinerairesR = combinaisonItineraire
         matrixR = combinaisonMatrix
 
@@ -334,7 +392,7 @@ async def getCheminasync( zoneA, lonA, latA, zoneB, lonB, latB,profile):
                    durationsMatrix.append(trafficduration)
         print (durationsMatrix)"""
         print(len(resultats))
-        print(len(infosToncon))
+        print("infos troncons",len(infosToncon))
         print(len(itinerairesR))
         print(len(matrixR))
         resp.append({"points-arrets":resultats,"details-itineraires":infosToncon,"itineraires":itinerairesR,"matrix-durees":matrixR})
@@ -347,6 +405,15 @@ async def getChemin(request, zoneA, lonA, latA, zoneB, lonB, latB,profile):
     #return HttpResponse(tasks)
     return HttpResponse(json.dumps(response), content_type="application/json")
 
+def CalculatePrice(lisT):
+    prix = 0
+
+    for item in lisT:
+        if "prix_troncon" in item:
+            prix +=item["prix_troncon"]
+        else:
+            prix+=0
+    return prix
 
 def sort_key(item):
     return item[0].features[0].properties.summary.distance
@@ -383,30 +450,14 @@ async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB
     if index !="0":
         for itineraire in infosToncon:
             trouve = True
-            for troncons in itineraire:
-                if trouve:
-                    if type.lower() == "gbaka".lower() or type.lower() == "warren".lower():
-                        if type.lower() in [x["type_transport"].lower() for x in troncons]:
-                            trouve = True
-                        else:
-                            trouve = False
-                    else:
-                        if not [x for x in troncons]:
-                            trouve = True
-                        else:
-                            trouve = False
-                else:
-                    break
             if trouve:
-                resutats.append(itineraire)
-                indexofitineraire.append(infosToncon.index(itineraire))
+                if all(element["type_transport"].lower() == type.lower() for element in list(itineraire)):
+                    resutats.append(itineraire)
+                    indexofitineraire.append(infosToncon.index(itineraire))
 
-        for itineraire in resutats:
-            for troncons in itineraire:
-                resutats[resutats.index(itineraire)][resutats[resutats.index(itineraire)].index(troncons)] = [t for t in troncons if t["type_transport"].lower() == type.lower()]
         m =[]
         i = []
-        print(resutats)
+
         for index in indexofitineraire:
             pointsfiltre.append(points[index])
             m.append(matrixR[index])
@@ -417,7 +468,7 @@ async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB
         itinerairesR = i
         matrixR = m
 
-    if filter_priority !="vide":
+    if filter_priority != "vide":
 
         match filter_priority:
             case "Moinslong":
@@ -435,7 +486,17 @@ async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB
 
 
             case "Moinscoûteux":
-                print("")
+                prix = 0
+                for itineraire in infosToncon:
+                    beforeFilterDetailsItineraire.append(itineraire)
+
+                filter_list = sorted(beforeFilterDetailsItineraire, key=lambda x:CalculatePrice(x) ,reverse=True)
+                for after in filter_list:
+                    afterFilterMatrix.append(matrixR[beforeFilterDetailsItineraire.index(after)])
+                    afterFilterPoints.append(points[beforeFilterDetailsItineraire.index(after)])
+                    afterFilterDetailsItineraire.append(infosToncon[beforeFilterDetailsItineraire.index(after)])
+                    afterFilterItineraires.append(itinerairesR[beforeFilterDetailsItineraire.index(after)])
+
             case "temps":
 
                 for itineraire in itinerairesR:
