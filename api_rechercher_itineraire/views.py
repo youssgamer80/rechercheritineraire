@@ -41,9 +41,11 @@ def depthFirst(graph, currentVertex, visited, visitedList):
         return visitedList
 
 def getAllPointArret():
-    points = PointArret.objects.all()
-
-    serializer = PointArretSerializer(points, many=True)
+    cursor = connection.cursor()
+    query ="SELECT point_arret.id, point_arret.nom, point_arret.longitude, point_arret.latitude, point_arret.statut, point_arret.id_zone_fk, zone.id, zone.libelle, zone.id_type_zone_fk, zone.id_zoneparent_fk, zone.statut FROM point_arret INNER JOIN zone ON (point_arret.id_zone_fk = zone.id)"
+    cursor.execute(query)
+    res = cursor.fetchall()
+    serializer = PointZoneSerialzer(res,many=True)
     data = serializer.data
     return data
 
@@ -85,7 +87,7 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-async def write_data(zoneA, lonA, latA):
+async def write_data(zone,zoneA, lonA, latA):
     fpointArret = []
     fmatrixList = []
     fitineraires = []
@@ -99,12 +101,20 @@ async def write_data(zoneA, lonA, latA):
             filePathMatrixDistance= 'matrix-distance %s %s.json' % (zoneA, profile)
             filePathMatrixitineraire = 'itineraire %s %s.json' % (zoneA, profile)
 
+           # absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
+           # absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
+           # absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
+
             absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
             absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
             absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
 
+            #if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA)):
+              #  os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA))
+
             if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA)):
                 os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA))
+
             if is_non_zero_file(absolutePathPointArret) == False:
 
                 pa = open(absolutePathPointArret, 'a')
@@ -156,7 +166,7 @@ async def write_data(zoneA, lonA, latA):
         except FileNotFoundError:
             print('File does not exist')
 
-def read_data(zoneA, lonA, latA):
+def read_data(zone,zoneA, lonA, latA):
 
     profiles = ['driving-car','cycling-regular','foot-walking']
     fpointArret = []
@@ -172,10 +182,13 @@ def read_data(zoneA, lonA, latA):
             filePathMatrixDistance= 'matrix-distance %s %s.json' % (zoneA, profile)
             filePathMatrixitineraire = 'itineraire %s %s.json' % (zoneA, profile)
 
+           # absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
+           # absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
+           # absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
+
             absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
             absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
             absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
-
 
 
             pa = open(absolutePathPointArret)
@@ -247,12 +260,12 @@ async def generateAllPointIntineraire(request):
     data = getAllPointArret()
     for d in data:
         print(d)
-        await write_data(d["nom"], d["longitude"], d["latitude"])
+        await write_data(d["zone"],d["nom"], d["longitude"], d["latitude"])
     response = {"message":"Succès de génération" }
     # return HttpResponse(tasks)
     return HttpResponse(json.dumps(response), content_type="application/json")
 
-async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
+async def genItineraire(zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
     pointarretsR = []
     pointarret = []
     infosToncon =[]
@@ -270,19 +283,13 @@ async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
         return Response({"data": []}, status=status.HTTP_200_OK)
     else:
 
-        if not os.path.exists(
-                '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(
-                        zoneA)):
-            #Ecriture des donnees pour un point donne
-            await write_data(zoneA, lonA, latA)
 
-        else:
-            #Recuperation des donnes stockees
-            response = read_data(zoneA, lonA, latA)
-            #print(response)
-            pointarret = response[profile]["points-arrets"]
-            itineraires = response[profile]["itineraires"]
-            matrix = response[profile]["matrix-distances"]
+        #Recuperation des donnes stockees
+        response = read_data(zone,zoneA, lonA, latA)
+        #print(response)
+        pointarret = response[profile]["points-arrets"]
+        itineraires = response[profile]["itineraires"]
+        matrix = response[profile]["matrix-distances"]
 
 
 
@@ -362,14 +369,14 @@ async def genItineraire( zoneA, lonA, latA, zoneB, lonB, latB,profile):
 
     return list(reversed(pointarretsR)),list(reversed(infosToncon)),list(reversed(itinerairesR)),list(reversed(matrixR))
 
-async def getCheminasync( zoneA, lonA, latA, zoneB, lonB, latB,profile):
+async def getCheminasync(zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
         resultats = []
         infosToncon = []
         itinerairesR = []
         matrixR = []
         resp = []
         durationsMatrix = []
-        resultats,infosToncon,itinerairesR,matrixR =await genItineraire(zoneA, lonA, latA, zoneB, lonB, latB,profile)
+        resultats,infosToncon,itinerairesR,matrixR =await genItineraire(zone,zoneA, lonA, latA, zoneB, lonB, latB,profile)
         r = {}
 
         """for resultat in resultats:
@@ -399,8 +406,8 @@ async def getCheminasync( zoneA, lonA, latA, zoneB, lonB, latB,profile):
 
         return resp
 
-async def getChemin(request, zoneA, lonA, latA, zoneB, lonB, latB,profile):
-    tasks =  await getCheminasync(zoneA, lonA, latA, zoneB, lonB, latB,profile)
+async def getChemin(request,zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
+    tasks =  await getCheminasync(zone,zoneA, lonA, latA, zoneB, lonB, latB,profile)
     response = {"data":tasks}
     #return HttpResponse(tasks)
     return HttpResponse(json.dumps(response), content_type="application/json")
@@ -417,7 +424,7 @@ def CalculatePrice(lisT):
 
 def sort_key(item):
     return item[0].features[0].properties.summary.distance
-async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB,profile):
+async def filtre(request,index,type,filtre,zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
     pointsfiltre = []
     points = []
     infosToncon = []
@@ -440,7 +447,7 @@ async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB
     beforeFilterDetailsItineraire= []
     afterFilterDetailsItineraire = []
 
-    points, infosToncon,itinerairesR,matrixR = await genItineraire(zoneA, lonA, latA, zoneB, lonB, latB,profile)
+    points, infosToncon,itinerairesR,matrixR = await genItineraire(zone,zoneA, lonA, latA, zoneB, lonB, latB,profile)
     print(type)
     # Here you list all your filter names
     #filter_names = ["distance-temps","distance-prix","prix-temps","temps-distance","prix-distance","temps-prix","vide-vide"]
@@ -467,47 +474,33 @@ async def filtre(request,index,type,filtre, zoneA, lonA, latA, zoneB, lonB, latB
         infosToncon = resutats
         itinerairesR = i
         matrixR = m
+    if filtre != "vide-vide":
+        if filtre == "Moinslong(distance)-Moinscoûteux" or "Moinscoûteux-Moinslong(distance)":
 
-    if filter_priority != "vide":
+            for itineraire in itinerairesR:
+                beforeFilterItineraires.append(osr_itineraire_from_dict(itineraire))
 
-        match filter_priority:
-            case "Moinslong":
+            filter_list = sorted(beforeFilterItineraires,
+                                 key=lambda x: x.features[0].properties.summary.distance and CalculatePrice(infosToncon[beforeFilterItineraires.index(x)]),
+                                 reverse=True)
+            for after in filter_list:
+                afterFilterMatrix.append(matrixR[beforeFilterItineraires.index(after)])
+                afterFilterPoints.append(points[beforeFilterItineraires.index(after)])
+                afterFilterDetailsItineraire.append(infosToncon[beforeFilterItineraires.index(after)])
+                afterFilterItineraires.append(itinerairesR[beforeFilterItineraires.index(after)])
+        else:
+            for itineraire in itinerairesR:
+                beforeFilterItineraires.append(osr_itineraire_from_dict(itineraire))
 
-                for itineraire in itinerairesR:
-                    beforeFilterItineraires.append(osr_itineraire_from_dict(itineraire))
-
-                filter_list = sorted(beforeFilterItineraires,key=lambda x: x.features[0].properties.summary.distance, reverse=True)
-                for after in filter_list:
-                    afterFilterMatrix.append(matrixR[beforeFilterItineraires.index(after)])
-                    afterFilterPoints.append(points[beforeFilterItineraires.index(after)])
-                    afterFilterDetailsItineraire.append(infosToncon[beforeFilterItineraires.index(after)])
-                    afterFilterItineraires.append(itinerairesR[beforeFilterItineraires.index(after)])
-
-
-
-            case "Moinscoûteux":
-                prix = 0
-                for itineraire in infosToncon:
-                    beforeFilterDetailsItineraire.append(itineraire)
-
-                filter_list = sorted(beforeFilterDetailsItineraire, key=lambda x:CalculatePrice(x) ,reverse=True)
-                for after in filter_list:
-                    afterFilterMatrix.append(matrixR[beforeFilterDetailsItineraire.index(after)])
-                    afterFilterPoints.append(points[beforeFilterDetailsItineraire.index(after)])
-                    afterFilterDetailsItineraire.append(infosToncon[beforeFilterDetailsItineraire.index(after)])
-                    afterFilterItineraires.append(itinerairesR[beforeFilterDetailsItineraire.index(after)])
-
-            case "temps":
-
-                for itineraire in itinerairesR:
-                    beforeFilterItineraires.append(osr_itineraire_from_dict(itineraire))
-
-                filter_list = sorted(beforeFilterItineraires,key=lambda x: x.features[0].properties.summary.duration, reverse=True)
-                for after in filter_list:
-                    afterFilterMatrix.append(matrixR[beforeFilterItineraires.index(after)])
-                    afterFilterPoints.append(points[beforeFilterItineraires.index(after)])
-                    afterFilterDetailsItineraire.append(infosToncon[beforeFilterItineraires.index(after)])
-                    afterFilterItineraires.append(itinerairesR[beforeFilterItineraires.index(after)])
+            filter_list = sorted(beforeFilterItineraires,
+                                 key=lambda x: x.features[0].properties.summary.duration and CalculatePrice(infosToncon[beforeFilterItineraires.index(x)]),
+                                 reverse=True)
+            for after in filter_list:
+                afterFilterMatrix.append(matrixR[beforeFilterItineraires.index(after)])
+                afterFilterPoints.append(points[beforeFilterItineraires.index(after)])
+                afterFilterDetailsItineraire.append(infosToncon[beforeFilterItineraires.index(after)])
+                afterFilterItineraires.append(itinerairesR[beforeFilterItineraires.index(after)])
+                afterFilterItineraires.append(itinerairesR[beforeFilterItineraires.index(after)])
     else:
         afterFilterMatrix = matrixR
         afterFilterPoints = points

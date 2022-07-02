@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from api_rechercher_itineraire.models import *
-
+from rest_framework.serializers import Serializer, ModelSerializer, SerializerMethodField
 
 class TronconSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,8 +13,30 @@ class PointArretSerializer(serializers.ModelSerializer):
         model = PointArret
         fields = '__all__'
 
+class ZoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Zone
+        fields = '__all__'
 
-from rest_framework.serializers import Serializer, ModelSerializer, SerializerMethodField
+
+
+class PointZoneSerialzer(Serializer):
+    zone =SerializerMethodField()
+    nom = SerializerMethodField()
+    longitude = SerializerMethodField()
+    latitude= SerializerMethodField()
+    """PointArret"""
+    def get_nom(self, instance):
+        return instance[1]
+    def get_longitude(self, instance):
+        return instance[2]
+    def get_latitude(self, instance):
+        return instance[3]
+
+    """Zone"""
+    def get_zone(self,instance):
+        return instance[7]
+
 
 
 class RawQuerySerializer(Serializer):

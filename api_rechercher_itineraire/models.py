@@ -163,7 +163,7 @@ class PointArret(models.Model):
     longitude = models.FloatField()
     latitude = models.FloatField()
     statut = models.IntegerField(blank=True, null=True)
-    id_zone_fk = models.ForeignKey('Zone', models.DO_NOTHING, db_column='id_zone_fk')
+    id_zone_fk = models.ForeignKey('zone', models.DO_NOTHING, db_column='id_zone_fk')
 
     class Meta:
         managed = False
@@ -357,6 +357,7 @@ class Vehicule(models.Model):
 
 
 class Zone(models.Model):
+    id = models.IntegerField(primary_key=True,db_column='id')
     libelle = models.CharField(max_length=255)
     id_type_zone_fk = models.ForeignKey(TypeZone, models.DO_NOTHING, db_column='id_type_zone_fk')
     id_zoneparent_fk = models.ForeignKey('Zoneparent', models.DO_NOTHING, db_column='id_zoneparent_fk')
@@ -374,3 +375,14 @@ class Zoneparent(models.Model):
     class Meta:
         managed = False
         db_table = 'zoneparent'
+
+class PointZone(models.Model):
+    id = models.IntegerField(primary_key=True,db_column='id')
+    libelle = models.CharField(max_length=255)
+    id_type_zone_fk = models.ForeignKey(TypeZone, models.DO_NOTHING, db_column='id_type_zone_fk')
+    id_zoneparent_fk = models.ForeignKey('Zoneparent', models.DO_NOTHING, db_column='id_zoneparent_fk')
+    nom = models.CharField(max_length=255)
+    longitude = models.FloatField()
+    latitude = models.FloatField()
+    id_zone_fk = models.ForeignKey('zone', models.DO_NOTHING, db_column='id_zone_fk')
+
