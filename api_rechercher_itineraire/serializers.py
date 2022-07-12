@@ -21,11 +21,14 @@ class ZoneSerializer(serializers.ModelSerializer):
 
 
 class PointZoneSerialzer(Serializer):
+    id = SerializerMethodField()
     zone =SerializerMethodField()
     nom = SerializerMethodField()
     longitude = SerializerMethodField()
     latitude= SerializerMethodField()
     """PointArret"""
+    def get_id(self, instance):
+        return instance[0]
     def get_nom(self, instance):
         return instance[1]
     def get_longitude(self, instance):

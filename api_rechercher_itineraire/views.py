@@ -2,30 +2,24 @@
 import os
 
 import httpx
-from asgiref.sync import sync_to_async
-from django.forms import model_to_dict
 from rest_framework import status
 from decimal import Decimal
 import itertools
-from trafficduration import trafffic_duration_from_dict
-from .class_ors.osr_matrix_duration import osr_matrix_duration_from_dict
-from .class_ors.osr_itineraire import osr_itineraire_from_dict
+from .class_ors.mapbox_matrice_duration import mapbox_matrice_distance_duration_from_dict
+#from .class_ors.osr_matrix_duration import osr_matrix_duration_from_dict
+#from .class_ors.osr_itineraire import osr_itineraire_from_dict
 from .serializers import *
-from rest_framework.views import APIView
-from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db import connection
 import json
 import asyncio
-from time import sleep
 from django.http import HttpResponse
-import operator
-from django.db.models import Q
-from functools import reduce
 
 # visitedList = [[]]
 mapBoxApiKey = "sk.eyJ1IjoidmlyZ2lsOTgiLCJhIjoiY2w0aDhvN2ZvMDNqYjNpcGV2amdteXEweCJ9.jxQ0o5aC0tf0S6U8Kze8_Q"
-osr_URL_BASE = "http://192.168.252.204:8080/ors/v2"
+osr_URL_BASE = "https://api.mapbox.com/directions/v5/mapbox"
+mapBox_Matrix_URL_BASE ="https://api.mapbox.com/directions-matrix/v1/mapbox"
+profiles = ['driving','walking','cycling']
 def depthFirst(graph, currentVertex, visited, visitedList):
 
     if currentVertex in graph:
@@ -55,7 +49,7 @@ def isListEmpty(inList):
         return all( map(isListEmpty, inList) )
     return False # Not a list
 
-def genererChemins(zone, lonA, latA):
+def genererChemins(zone, lonA, latA,id):
     finish = True
     visitedList = [[]]
 
@@ -67,16 +61,17 @@ def genererChemins(zone, lonA, latA):
     d = {}
     #print(query)
     itinieraires = []
+
     #print(json.loads(json.dumps(serializer.data)))
     for item in json.loads(json.dumps(serializer.data)):
-        a = [item["nom_point_A"], item["longitude_point_A"], item["latitude_point_A"]]
-        b = [item["nom_point_B"], item["longitude_point_B"], item["latitude_point_B"]]
+        a = [item["nom_point_A"], item["longitude_point_A"], item["latitude_point_A"], item["id_point_A"]]
+        b = [item["nom_point_B"], item["longitude_point_B"], item["latitude_point_B"], item["id_point_B"]]
         d.setdefault(tuple(a), []).append(tuple(b))
     list(d.values())
-    depthFirst(d, (str(zone), float(lonA), float(latA)), [], visitedList)
+    depthFirst(d, (str(zone), float(lonA), float(latA),int(id)), [], visitedList)
 
     l = visitedList
-    print(len(visitedList))
+
     if len(l) > 0:
         l.pop(0)
 
@@ -87,69 +82,81 @@ def is_non_zero_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 
 
-async def write_data(zone,zoneA, lonA, latA):
+async def write_data(zone,zoneA, lonA, latA,id):
     fpointArret = []
     fmatrixList = []
     fitineraires = []
-    profiles = ['driving-car','cycling-regular','foot-walking']
+
     for profile in profiles:
         pointArret = []
         matrixList = []
         itineraires = []
         try:
             filePathPointArret = 'point-arret %s %s.json'%(zoneA,profile)
-            filePathMatrixDistance= 'matrix-distance %s %s.json' % (zoneA, profile)
+            filePathMatrixDistance= 'matrix-distance-duree %s %s.json' % (zoneA, profile)
             filePathMatrixitineraire = 'itineraire %s %s.json' % (zoneA, profile)
 
-           # absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
-           # absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
-           # absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
+            absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
+            absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
+            absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
 
-            absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
-            absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
-            absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
+            #absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
+            #absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
+            #absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
 
-            #if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA)):
-              #  os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA))
+            if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA)):
+                os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zone,zoneA))
 
-            if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA)):
-                os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA))
+            #if not os.path.exists('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA)):
+            # os.makedirs('/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/{}'.format(zoneA))
 
             if is_non_zero_file(absolutePathPointArret) == False:
 
                 pa = open(absolutePathPointArret, 'a')
                 ma = open(absolutePathMatrixDistance, 'a')
                 it = open(absolutePathMatrixItineraire, 'a')
-                chemins=  genererChemins(zoneA, lonA, latA)
+                chemins=  genererChemins(zoneA, lonA, latA,id)
+
 
                 pAs = json.loads(json.dumps(chemins))
                 for pA in pAs:
-                    coords = []
-                    for coord in pA:
-                        coords.append([coord[1],coord[2]])
+                    coord = ""
+                    curbs = ""
+
+                    for coordornee in pA:
+                        if(pA.index(coordornee)!=len(pA)-1):
+                            coord += str(coordornee[1])+","+str(coordornee[2])+";"
+                            curbs += "curb;"
+                        else:
+                            coord += str(coordornee[1])+","+ str(coordornee[2])
+                            curbs += "curb"
 
                     async with httpx.AsyncClient() as client:
-                        await asyncio.sleep(1)
-                        matrix = osr_URL_BASE + '/matrix/%s'%(profile)
-                        r = await client.post(
-                            matrix,
-                            json={"locations":coords,"metrics":["distance"]}
-                        )
-                        await asyncio.sleep(1)
-                        itineraire = osr_URL_BASE + '/directions/%s/geojson'%(profile)
-                        r2 = await client.post(
-                            itineraire,
-                            json={"coordinates": coords}
-                        )
-                        if r.status_code == 200:
-                            trafficduration = osr_matrix_duration_from_dict(r.json()).distances[0]
+                        await asyncio.sleep(2)
+                        matrix = mapBox_Matrix_URL_BASE + "/%s/%s?approaches=%s&access_token=%s&annotations=distance,duration"%(profile,coord,curbs,mapBoxApiKey)
+                        r =  await client.get(matrix)
+
+                        await asyncio.sleep(2)
+                        itineraire = osr_URL_BASE + "/%s/%s?approaches=%s&access_token=%s&geometries=geojson"%(profile,coord,curbs,mapBoxApiKey)
+                        r2 = await client.get(itineraire)
+                        if r.status_code == 200 and r2.status_code == 200:
+                            print("matrix")
+                            print(matrix)
+                            print("itineraire")
+                            print(itineraire)
+                            trafficdistance = mapbox_matrice_distance_duration_from_dict(r.json()).distances[0]
                             """
                             Sauvegarder les itineraires pratiquables en réalité
                             """
-                            if(all(x <= y for x,y in zip(trafficduration, trafficduration[1:]))):
+                            if(all(x <= y for x,y in zip(trafficdistance, trafficdistance[1:]))):
                                 pointArret.append(pA)
                                 matrixList.append(r.json())
                                 itineraires.append(r2.json())
+                        else:
+                            print("matrice",r.status_code )
+                            print(matrix)
+                            print("itineraire",r2.status_code)
+                            print(itineraire)
 
                 pa.truncate(0)
                 pa.write(json.dumps(pointArret))
@@ -168,7 +175,6 @@ async def write_data(zone,zoneA, lonA, latA):
 
 def read_data(zone,zoneA, lonA, latA):
 
-    profiles = ['driving-car','cycling-regular','foot-walking']
     fpointArret = []
     fmatrixList = []
     fitineraires = []
@@ -179,16 +185,16 @@ def read_data(zone,zoneA, lonA, latA):
         itineraires = []
         try:
             filePathPointArret = 'point-arret %s %s.json'%(zoneA,profile)
-            filePathMatrixDistance= 'matrix-distance %s %s.json' % (zoneA, profile)
+            filePathMatrixDistance= 'matrix-distance-duree %s %s.json' % (zoneA, profile)
             filePathMatrixitineraire = 'itineraire %s %s.json' % (zoneA, profile)
 
-           # absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
-           # absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
-           # absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
+            absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s'%(zone,zoneA,filePathPointArret)
+            absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixDistance)
+            absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s/%s' % (zone,zoneA, filePathMatrixitineraire)
 
-            absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
-            absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
-            absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
+            #absolutePathPointArret = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s'%(zoneA,filePathPointArret)
+            #absolutePathMatrixDistance = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixDistance)
+            #absolutePathMatrixItineraire = '/Users/oda_38/Documents/YooBi/Back-end/rechercherItineraire/api_rechercher_itineraire/itineraires/%s/%s' % (zoneA, filePathMatrixitineraire)
 
 
             pa = open(absolutePathPointArret)
@@ -257,10 +263,11 @@ def check_list(lst):
                 print("Equal")
 
 async def generateAllPointIntineraire(request):
+    print("début généaration itineraire")
     data = getAllPointArret()
     for d in data:
         print(d)
-        await write_data(d["zone"],d["nom"], d["longitude"], d["latitude"])
+        await write_data(d["zone"],d["nom"], d["longitude"], d["latitude"],d["id"])
     response = {"message":"Succès de génération" }
     # return HttpResponse(tasks)
     return HttpResponse(json.dumps(response), content_type="application/json")
@@ -424,7 +431,7 @@ def CalculatePrice(lisT):
 
 def sort_key(item):
     return item[0].features[0].properties.summary.distance
-async def filtre(request,index,type,filtre,zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
+"""async def filtre(request,index,type,filtre,zone, zoneA, lonA, latA, zoneB, lonB, latB,profile):
     pointsfiltre = []
     points = []
     infosToncon = []
@@ -508,4 +515,4 @@ async def filtre(request,index,type,filtre,zone, zoneA, lonA, latA, zoneB, lonB,
         afterFilterItineraires = itinerairesR
 
     to_return = {"points-arrets":list(reversed(afterFilterPoints)),"details-itineraires":list(reversed(afterFilterDetailsItineraire)),"itineraires":list(reversed(afterFilterItineraires)),"matrix-durees":list(reversed(afterFilterMatrix))}
-    return HttpResponse(json.dumps({"data":[to_return]}), content_type="application/json")
+    return HttpResponse(json.dumps({"data":[to_return]}), content_type="application/json")"""
